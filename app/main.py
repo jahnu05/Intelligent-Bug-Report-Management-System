@@ -21,6 +21,7 @@ from .schemas import (
     ApiMessage,
     AssignmentGenerateRequest,
     AssignmentRecord,
+    BulkIssueFetchRequest,
     CommitRecord,
     ContributorSummary,
     IssueRecord,
@@ -221,6 +222,23 @@ def get_issue(
     return IssueRecord(**document)
 
 
+@app.post("/repositories/{owner}/{repo}/issues/fetch-all", response_model=ApiMessage)
+def fetch_all_issues(
+    owner: str,
+    repo: str,
+    request: BulkIssueFetchRequest,
+    pipeline: ContributorPipelineService = Depends(get_pipeline),
+) -> ApiMessage:
+    try:
+        result = pipeline.fetch_and_store_all_issues(owner, repo, state=request.state, max_issues=request.max_issues)
+        return ApiMessage(
+            message=result["message"],
+            data=result
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.post("/repositories/{owner}/{repo}/assignments/generate", response_model=AssignmentRecord)
 def generate_assignment(
     owner: str,
@@ -234,7 +252,6 @@ def generate_assignment(
             repo,
             issue_number=request.issue_number,
             issue_state=request.issue_state,
-            fetch_if_missing=request.fetch_if_missing,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

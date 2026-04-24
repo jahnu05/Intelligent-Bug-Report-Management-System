@@ -72,10 +72,14 @@ class RandomIssueFetchRequest(BaseModel):
     per_page: int = Field(default=100, ge=1, le=100)
 
 
+class BulkIssueFetchRequest(BaseModel):
+    state: str = "open"
+    max_issues: int = Field(default=200, ge=1, le=1000)
+
+
 class AssignmentGenerateRequest(BaseModel):
     issue_number: int | None = Field(default=None, ge=1)
     issue_state: str = "open"
-    fetch_if_missing: bool = True
 
 
 class SyncRunResult(BaseModel):

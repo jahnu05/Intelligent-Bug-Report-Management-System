@@ -95,6 +95,38 @@ class GitHubClient:
                 issues.append(self._to_issue(owner, repo, item))
         return issues
 
+    def fetch_all_issues(
+        self,
+        owner: str,
+        repo: str,
+        state: str = "open",
+        per_page: int = 100,
+        max_issues: int | None = None,
+    ) -> list[GitHubIssue]:
+        all_issues: list[GitHubIssue] = []
+        page = 1
+        
+        while True:
+            payload = self._request(
+                f"/repos/{owner}/{repo}/issues",
+                params={"state": state, "page": page, "per_page": per_page},
+            )
+            if not payload:
+                break
+                
+            for item in payload:
+                if item.get("pull_request"):
+                    continue
+                all_issues.append(self._to_issue(owner, repo, item))
+                
+                # Stop if we've reached the max_issues limit
+                if max_issues is not None and len(all_issues) >= max_issues:
+                    return all_issues[:max_issues]
+            
+            page += 1
+            
+        return all_issues
+
     def fetch_random_issue(
         self,
         owner: str,

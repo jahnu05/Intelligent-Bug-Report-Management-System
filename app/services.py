@@ -175,6 +175,32 @@ class ContributorPipelineService:
             "message": "Contributor summaries cleared for all repositories.",
         }
 
+    def fetch_and_store_all_issues(
+        self,
+        owner: str,
+        repo: str,
+        state: str = "open",
+        max_issues: int = 200,
+    ) -> dict[str, Any]:
+        repository_full_name = f"{owner}/{repo}"
+        
+        all_issues = self.github_client.fetch_all_issues(owner, repo, state=state, max_issues=max_issues)
+        
+        stored_count = 0
+        for issue in all_issues:
+            document = self._issue_document(issue)
+            self.issue_store.upsert_issue(document)
+            stored_count += 1
+            
+        return {
+            "repository_full_name": repository_full_name,
+            "issues_fetched": len(all_issues),
+            "issues_stored": stored_count,
+            "state": state,
+            "max_issues_limit": max_issues,
+            "message": f"Successfully fetched and stored {stored_count} issues from {repository_full_name} (limited to {max_issues})."
+        }
+
     def fetch_random_issue(
         self,
         owner: str,
@@ -200,7 +226,6 @@ class ContributorPipelineService:
         repo: str,
         issue_number: int | None = None,
         issue_state: str = "open",
-        fetch_if_missing: bool = True,
     ) -> dict[str, Any]:
         repository_full_name = f"{owner}/{repo}"
 
@@ -208,12 +233,12 @@ class ContributorPipelineService:
             issue_doc = self.fetch_random_issue(owner, repo, state=issue_state)
         else:
             issue_doc = self.issue_store.get_issue(repository_full_name, issue_number)
-            if not issue_doc and fetch_if_missing:
-                issue = self.github_client.get_issue(owner, repo, issue_number)
-                issue_doc = self._issue_document(issue)
-                self.issue_store.upsert_issue(issue_doc)
             if not issue_doc:
-                raise ValueError("Issue not found in DB. Fetch issue first or enable fetch_if_missing.")
+                raise ValueError(f"Issue #{issue_number} not found in database. Please fetch issues first using the fetch-all endpoint.")
+            
+            current_state = issue_doc.get("state", "unknown")
+            if current_state != "open":
+                raise ValueError(f"Issue #{issue_number} is not open (current state: {current_state}). Only open issues can be assigned.")
 
         contributors = self.contributor_store.list_profiles(repository_full_name)
         if not contributors:
