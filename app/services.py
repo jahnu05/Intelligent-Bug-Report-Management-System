@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from .context_optimizer import CommitContextOptimizer
+from .events import emit
 from .gemini_api import LLMProviderStrategy
 from .github_api import GitHubClient, GitHubCommit, GitHubIssue
 from .repositories import AssignmentStore, CommitStore, ContributorStore, IssueStore, RepositoryStore, SyncRunStore
@@ -73,7 +74,7 @@ class ContributorPipelineService:
             finished_at = datetime.now(timezone.utc)
             self.sync_run_store.finish_run(run_id, "success", "Repository synced successfully")
 
-            return {
+            result = {
                 "repository_full_name": repository_full_name,
                 "status": "success",
                 "commits_ingested": ingested_count,
@@ -82,6 +83,8 @@ class ContributorPipelineService:
                 "finished_at": finished_at,
                 "message": "Repository synced successfully",
             }
+            emit("repo_synced", {"repo": repository_full_name, "commits": ingested_count, "contributors": len(contributor_groups)})
+            return result
         except Exception as exc:
             self.repository_store.update_sync_state(repository_full_name, "failed", str(exc))
             self.sync_run_store.finish_run(run_id, "failed", str(exc))
@@ -192,13 +195,14 @@ class ContributorPipelineService:
             self.issue_store.upsert_issue(document)
             stored_count += 1
             
+        emit("issues_fetched", {"repo": repository_full_name, "count": stored_count, "state": state})
         return {
             "repository_full_name": repository_full_name,
             "issues_fetched": len(all_issues),
             "issues_stored": stored_count,
             "state": state,
             "max_issues_limit": max_issues,
-            "message": f"Successfully fetched and stored {stored_count} issues from {repository_full_name} (limited to {max_issues})."
+            "message": f"Successfully fetched and stored {stored_count} issues from {repository_full_name} (limited to {max_issues}).",
         }
 
     def fetch_random_issue(
@@ -214,8 +218,23 @@ class ContributorPipelineService:
         self.issue_store.upsert_issue(document)
         return document
 
-    def list_issues(self, owner: str, repo: str, limit: int = 50) -> list[dict[str, Any]]:
-        return self.issue_store.list_issues(f"{owner}/{repo}", limit=limit)
+    def list_issues(
+        self,
+        owner: str,
+        repo: str,
+        limit: int = 20,
+        offset: int = 0,
+        state: str | None = None,
+        search: str | None = None,
+    ) -> list[dict[str, Any]]:
+        return self.issue_store.list_issues(
+            f"{owner}/{repo}", limit=limit, offset=offset, state=state, search=search
+        )
+
+    def count_issues(
+        self, owner: str, repo: str, state: str | None = None, search: str | None = None
+    ) -> int:
+        return self.issue_store.count_issues(f"{owner}/{repo}", state=state, search=search)
 
     def get_issue(self, owner: str, repo: str, issue_number: int) -> dict[str, Any] | None:
         return self.issue_store.get_issue(f"{owner}/{repo}", issue_number)
@@ -266,6 +285,12 @@ class ContributorPipelineService:
         }
         assignment = self.summarizer.assign_issue(assignment_input)
 
+        assigned_display_name = next(
+            (c.get("display_name") or c.get("github_login")
+             for c in contributors
+             if c.get("contributor_key") == assignment.assigned_contributor_key),
+            assignment.assigned_github_login,
+        )
         assignment_document = {
             "repository_full_name": repository_full_name,
             "issue_number": issue_doc["issue_number"],
@@ -274,6 +299,7 @@ class ContributorPipelineService:
             "issue_state": issue_doc.get("state", "open"),
             "assigned_contributor_key": assignment.assigned_contributor_key,
             "assigned_github_login": assignment.assigned_github_login,
+            "assigned_display_name": assigned_display_name,
             "rationale": assignment.rationale,
             "confidence": assignment.confidence,
             "alternatives": assignment.alternatives,
@@ -282,7 +308,65 @@ class ContributorPipelineService:
             "generated_at": datetime.now(timezone.utc),
         }
         self.assignment_store.upsert_assignment(assignment_document)
+        emit(
+            "assignment_generated",
+            {
+                "repo": repository_full_name,
+                "issue_number": issue_doc["issue_number"],
+                "assignee": assignment.assigned_github_login,
+                "confidence": assignment.confidence,
+            },
+        )
         return assignment_document
+
+    def approve_assignment(self, owner: str, repo: str, issue_number: int) -> dict[str, Any] | None:
+        doc = self.assignment_store.approve_assignment(f"{owner}/{repo}", issue_number)
+        if doc:
+            emit("assignment_approved", {"repo": f"{owner}/{repo}", "issue_number": issue_number})
+        return doc
+
+    def override_assignment(
+        self, owner: str, repo: str, issue_number: int, contributor_key: str
+    ) -> dict[str, Any] | None:
+        repository_full_name = f"{owner}/{repo}"
+        
+        # Validate contributor_key - if it's null/empty, try to resolve from github_login
+        if not contributor_key or contributor_key == "null":
+            return None
+            
+        contributor = self.contributor_store.get_profile(repository_full_name, contributor_key)
+        if not contributor:
+            return None
+        # Get existing assignment to preserve issue details
+        existing = self.assignment_store.get_assignment(repository_full_name, issue_number)
+        display_name = contributor.get("display_name") or contributor.get("github_login") or contributor_key
+        updates = {
+            "assigned_contributor_key": contributor_key,
+            "assigned_github_login": contributor.get("github_login"),
+            "assigned_display_name": display_name,
+            "rationale": f"Manually overridden by maintainer to {display_name}.",
+            "confidence": "manual",
+            "generated_at": datetime.now(timezone.utc),
+        }
+        # Preserve issue details from existing assignment
+        if existing:
+            updates["repository_full_name"] = existing.get("repository_full_name")
+            updates["issue_title"] = existing.get("issue_title")
+            updates["issue_url"] = existing.get("issue_url")
+            updates["issue_state"] = existing.get("issue_state", "open")
+            updates["source_contributor_count"] = existing.get("source_contributor_count", 0)
+            updates["generated_with"] = existing.get("generated_with", "")
+        else:
+            # Fallback: set from current request parameters
+            updates["repository_full_name"] = repository_full_name
+            updates["issue_title"] = ""
+        doc = self.assignment_store.override_assignment(repository_full_name, issue_number, updates)
+        if doc:
+            emit(
+                "assignment_overridden",
+                {"repo": repository_full_name, "issue_number": issue_number, "new_assignee": contributor.get("github_login")},
+            )
+        return doc
 
     def list_assignments(self, owner: str, repo: str, limit: int = 50) -> list[dict[str, Any]]:
         return self.assignment_store.list_assignments(f"{owner}/{repo}", limit=limit)

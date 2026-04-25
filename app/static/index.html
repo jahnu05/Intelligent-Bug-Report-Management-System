@@ -1,0 +1,1028 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Bug Report Management – Dashboard</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #f1f5f9;
+      --surface:   #ffffff;
+      --sidebar-bg:#0f172a;
+      --sidebar-txt:#cbd5e1;
+      --primary:   #3b82f6;
+      --primary-dk:#2563eb;
+      --success:   #10b981;
+      --warning:   #f59e0b;
+      --danger:    #ef4444;
+      --muted:     #64748b;
+      --border:    #e2e8f0;
+      --txt:       #0f172a;
+      --txt2:      #475569;
+      --radius:    8px;
+      --shadow:    0 1px 3px rgba(0,0,0,.10), 0 1px 2px rgba(0,0,0,.06);
+      --shadow-md: 0 4px 6px rgba(0,0,0,.07), 0 2px 4px rgba(0,0,0,.06);
+    }
+
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+           background: var(--bg); color: var(--txt); font-size: 14px; height: 100vh;
+           display: flex; flex-direction: column; overflow: hidden; }
+
+    /* ── Navbar ── */
+    #navbar {
+      height: 56px; background: var(--sidebar-bg); display: flex; align-items: center;
+      padding: 0 20px; gap: 16px; z-index: 100; flex-shrink: 0;
+      box-shadow: 0 1px 0 rgba(255,255,255,.08);
+    }
+    .nav-brand { color: #f8fafc; font-weight: 700; font-size: 15px;
+                 display: flex; align-items: center; gap: 8px; white-space: nowrap; }
+    .nav-brand svg { color: var(--primary); }
+    .nav-repo { display: flex; align-items: center; gap: 6px; flex: 1; }
+    .nav-repo input {
+      background: #1e293b; border: 1px solid #334155; color: #f1f5f9;
+      border-radius: 6px; padding: 5px 10px; font-size: 13px; width: 160px;
+      outline: none;
+    }
+    .nav-repo input:focus { border-color: var(--primary); }
+    .nav-sep { color: #475569; font-size: 18px; }
+    .nav-load-btn {
+      background: var(--primary); color: white; border: none; border-radius: 6px;
+      padding: 5px 14px; font-size: 13px; cursor: pointer; font-weight: 500;
+      transition: background .15s;
+    }
+    .nav-load-btn:hover { background: var(--primary-dk); }
+    .nav-right { display: flex; align-items: center; gap: 12px; margin-left: auto; }
+    .sse-dot { width: 8px; height: 8px; border-radius: 50%; background: #475569;
+               transition: background .3s; }
+    .sse-dot.connected { background: var(--success); box-shadow: 0 0 6px var(--success); }
+    .sse-label { color: #94a3b8; font-size: 12px; }
+
+    /* ── Main layout ── */
+    #app { display: flex; flex: 1; overflow: hidden; }
+
+    /* ── Left panel ── */
+    #panel-left {
+      width: 340px; min-width: 340px; background: var(--surface);
+      border-right: 1px solid var(--border); display: flex; flex-direction: column;
+      overflow: hidden;
+    }
+    .panel-header {
+      padding: 14px 16px 10px; border-bottom: 1px solid var(--border); flex-shrink: 0;
+    }
+    .panel-title { font-weight: 700; font-size: 15px; margin-bottom: 10px; }
+    .panel-controls { display: flex; gap: 8px; flex-wrap: wrap; }
+    .panel-controls select, .panel-controls input {
+      flex: 1; min-width: 80px; border: 1px solid var(--border); border-radius: 6px;
+      padding: 5px 8px; font-size: 12px; background: var(--bg); color: var(--txt);
+      outline: none;
+    }
+    .panel-controls select:focus, .panel-controls input:focus { border-color: var(--primary); }
+    .btn-sm {
+      border: none; border-radius: 6px; padding: 5px 12px; font-size: 12px;
+      cursor: pointer; font-weight: 500; transition: all .15s; white-space: nowrap;
+    }
+    .btn-primary { background: var(--primary); color: white; }
+    .btn-primary:hover { background: var(--primary-dk); }
+    .btn-secondary { background: #e2e8f0; color: var(--txt2); }
+    .btn-secondary:hover { background: #cbd5e1; }
+    .btn-success { background: var(--success); color: white; }
+    .btn-success:hover { background: #059669; }
+    .btn-warning { background: var(--warning); color: white; }
+    .btn-warning:hover { background: #d97706; }
+    .btn-danger  { background: var(--danger);  color: white; }
+    .btn-danger:hover  { background: #dc2626; }
+
+    #issue-list { flex: 1; overflow-y: auto; padding: 8px 0; }
+    .issue-card {
+      padding: 12px 16px; cursor: pointer; transition: background .12s;
+      border-bottom: 1px solid var(--border);
+    }
+    .issue-card:hover { background: #f8fafc; }
+    .issue-card.active { background: #eff6ff; border-left: 3px solid var(--primary); }
+    .ic-top { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+    .ic-num { font-size: 11px; color: var(--muted); font-weight: 600; }
+    .ic-title { font-size: 13px; font-weight: 500; flex: 1; overflow: hidden;
+                text-overflow: ellipsis; white-space: nowrap; }
+    .ic-bottom { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+
+    /* ── Pagination ── */
+    #pagination {
+      flex-shrink: 0; border-top: 1px solid var(--border);
+      padding: 8px 12px; display: flex; align-items: center; justify-content: space-between;
+      gap: 6px; background: var(--surface);
+    }
+    .pg-count { font-size: 11px; color: var(--muted); white-space: nowrap; }
+    .pg-controls { display: flex; align-items: center; gap: 4px; }
+    .pg-btn {
+      min-width: 28px; height: 28px; padding: 0 6px; border-radius: 6px;
+      border: 1px solid var(--border); background: var(--surface); color: var(--txt2);
+      font-size: 12px; font-weight: 500; cursor: pointer; transition: all .12s;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .pg-btn:hover:not(:disabled) { background: var(--bg); border-color: var(--primary); color: var(--primary); }
+    .pg-btn.active { background: var(--primary); border-color: var(--primary); color: white; }
+    .pg-btn:disabled { opacity: .38; cursor: default; }
+    .pg-ellipsis { font-size: 12px; color: var(--muted); padding: 0 2px; line-height: 28px; }
+
+    /* ── Badges ── */
+    .badge {
+      display: inline-flex; align-items: center; gap: 4px; padding: 2px 7px;
+      border-radius: 999px; font-size: 11px; font-weight: 600;
+    }
+    .badge-open    { background: #dcfce7; color: #166534; }
+    .badge-closed  { background: #f1f5f9; color: #475569; }
+    .badge-label   { background: #eff6ff; color: #1e40af; }
+    .badge-high    { background: #dcfce7; color: #166534; }
+    .badge-medium  { background: #fef9c3; color: #854d0e; }
+    .badge-low     { background: #fef2f2; color: #991b1b; }
+    .badge-manual  { background: #f3e8ff; color: #6b21a8; }
+    .badge-approved{ background: #dcfce7; color: #166534; border: 1px solid #86efac; }
+    .badge-overridden{ background: #fff7ed; color: #9a3412; border: 1px solid #fdba74; }
+    .badge-coming  { background: #f3e8ff; color: #7c3aed; font-size: 10px; }
+
+    /* ── Right panel ── */
+    #panel-right { flex: 1; overflow-y: auto; padding: 24px; }
+
+    #empty-state {
+      height: 100%; display: flex; flex-direction: column; align-items: center;
+      justify-content: center; color: var(--muted); gap: 12px;
+    }
+    #empty-state svg { opacity: .3; }
+    #empty-state p { font-size: 15px; }
+
+    #issue-detail { max-width: 820px; }
+
+    .detail-header { margin-bottom: 20px; }
+    .detail-num { font-size: 12px; color: var(--muted); margin-bottom: 4px; font-weight: 600; }
+    .detail-title { font-size: 20px; font-weight: 700; line-height: 1.3; margin-bottom: 10px; }
+    .detail-meta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+    /* ── Tabs ── */
+    .tabs { display: flex; gap: 0; border-bottom: 2px solid var(--border); margin-bottom: 20px; }
+    .tab {
+      padding: 8px 16px; font-size: 13px; font-weight: 500; color: var(--muted);
+      background: none; border: none; cursor: pointer; border-bottom: 2px solid transparent;
+      margin-bottom: -2px; transition: all .15s;
+    }
+    .tab:hover { color: var(--txt); }
+    .tab.active { color: var(--primary); border-bottom-color: var(--primary); }
+
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+
+    /* ── Issue body ── */
+    #d-body {
+      background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+      padding: 16px; line-height: 1.7; color: var(--txt2); white-space: pre-wrap;
+      word-break: break-word; font-size: 13px; max-height: 500px; overflow-y: auto;
+    }
+    #d-body:empty::after { content: 'No description provided.'; color: var(--muted); font-style: italic; }
+
+    /* ── Assignment card ── */
+    .assignment-card {
+      background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+      padding: 20px; margin-bottom: 16px; box-shadow: var(--shadow);
+    }
+    .assignment-header { display: flex; justify-content: space-between; align-items: flex-start;
+                         margin-bottom: 14px; gap: 12px; }
+    .assignee-avatar {
+      width: 42px; height: 42px; border-radius: 50%; background: linear-gradient(135deg,#3b82f6,#8b5cf6);
+      display: flex; align-items: center; justify-content: center; color: white;
+      font-weight: 700; font-size: 15px; flex-shrink: 0;
+    }
+    .assignee-info { flex: 1; }
+    .assignee-name { font-weight: 700; font-size: 16px; }
+    .assignee-key  { font-size: 11px; color: var(--muted); margin-top: 2px; }
+    .rationale-section { margin-bottom: 16px; }
+    .rationale-label { font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase;
+                        letter-spacing: .05em; margin-bottom: 6px; }
+    .rationale-text {
+      font-size: 13px; color: var(--txt2); line-height: 1.65;
+      background: #f8fafc; border-radius: 6px; padding: 12px; border: 1px solid var(--border);
+    }
+    .status-row { display: flex; align-items: center; gap: 8px; margin-bottom: 16px; }
+    .assignment-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+    /* ── Alternatives ── */
+    .alternatives-header { font-weight: 600; font-size: 13px; margin-bottom: 10px; color: var(--txt2); }
+    .alt-card {
+      background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+      padding: 12px 16px; margin-bottom: 8px; display: flex; align-items: flex-start; gap: 12px;
+    }
+    .alt-login { font-weight: 600; font-size: 13px; margin-bottom: 3px; }
+    .alt-reason { font-size: 12px; color: var(--muted); line-height: 1.5; }
+    .alt-pick-btn {
+      margin-left: auto; flex-shrink: 0; align-self: center;
+      background: #f1f5f9; border: 1px solid var(--border); border-radius: 6px;
+      padding: 4px 10px; font-size: 12px; cursor: pointer; transition: all .15s;
+    }
+    .alt-pick-btn:hover { background: var(--primary); color: white; border-color: var(--primary); }
+
+    /* ── Duplicates placeholder ── */
+    .coming-soon-card {
+      background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+      padding: 24px; text-align: center;
+    }
+    .coming-soon-card h3 { font-size: 16px; margin: 12px 0 8px; }
+    .coming-soon-card p  { color: var(--muted); font-size: 13px; line-height: 1.6; max-width: 480px; margin: 0 auto 20px; }
+    .placeholder-list { display: flex; flex-direction: column; gap: 10px; max-width: 520px; margin: 0 auto; }
+    .placeholder-item {
+      height: 64px; border-radius: var(--radius); background: #f1f5f9;
+      position: relative; overflow: hidden;
+    }
+    .placeholder-item::after {
+      content:''; position:absolute; inset:0;
+      background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,.6) 50%, transparent 100%);
+      animation: shimmer 1.5s infinite;
+    }
+    @keyframes shimmer { from { transform:translateX(-100%); } to { transform:translateX(100%); } }
+    .placeholder-confidence {
+      display: flex; align-items: center; gap: 8px; margin-top: 16px;
+      justify-content: center; color: var(--muted); font-size: 12px;
+    }
+    .conf-bar-wrap { width: 160px; height: 6px; background: #e2e8f0; border-radius: 99px; overflow: hidden; }
+    .conf-bar { height: 100%; border-radius: 99px; background: linear-gradient(90deg,#c084fc,#818cf8); width: 60%; }
+
+    /* ── Override modal ── */
+    .modal-backdrop {
+      position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 200;
+    }
+    .modal-box {
+      position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%);
+      background: var(--surface); border-radius: 12px; box-shadow: var(--shadow-md);
+      width: 480px; max-width: 95vw; z-index: 201; overflow: hidden;
+    }
+    .modal-header {
+      padding: 16px 20px; border-bottom: 1px solid var(--border);
+      display: flex; justify-content: space-between; align-items: center;
+    }
+    .modal-header h3 { font-size: 15px; font-weight: 700; }
+    .modal-close { background: none; border: none; font-size: 20px; cursor: pointer; color: var(--muted); }
+    .modal-body { padding: 16px 20px; max-height: 400px; overflow-y: auto; }
+    .modal-search {
+      width: 100%; border: 1px solid var(--border); border-radius: 6px;
+      padding: 7px 12px; font-size: 13px; outline: none; margin-bottom: 12px;
+    }
+    .modal-search:focus { border-color: var(--primary); }
+    .contributor-row {
+      display: flex; align-items: center; gap: 10px; padding: 10px 12px;
+      border-radius: 8px; cursor: pointer; transition: background .12s;
+    }
+    .contributor-row:hover, .contributor-row.selected { background: #eff6ff; }
+    .contributor-row.selected { outline: 2px solid var(--primary); }
+    .contrib-avatar {
+      width: 32px; height: 32px; border-radius: 50%;
+      background: linear-gradient(135deg,#f59e0b,#ef4444);
+      display: flex; align-items: center; justify-content: center;
+      color: white; font-weight: 700; font-size: 12px; flex-shrink: 0;
+    }
+    .contrib-login { font-weight: 600; font-size: 13px; }
+    .contrib-commits { font-size: 11px; color: var(--muted); }
+    .contrib-key { font-size: 11px; color: var(--muted); }
+    .modal-footer {
+      padding: 12px 20px; border-top: 1px solid var(--border);
+      display: flex; justify-content: flex-end; gap: 8px;
+    }
+
+    /* ── Toasts ── */
+    #toast-container {
+      position: fixed; bottom: 20px; right: 20px; z-index: 300;
+      display: flex; flex-direction: column; gap: 8px; pointer-events: none;
+    }
+    .toast {
+      background: var(--sidebar-bg); color: #f1f5f9; padding: 10px 16px;
+      border-radius: 8px; font-size: 13px; box-shadow: var(--shadow-md);
+      display: flex; align-items: center; gap: 8px; pointer-events: auto;
+      animation: slideIn .25s ease; max-width: 320px;
+    }
+    .toast.success .toast-icon::before { content: '✓'; color: var(--success); }
+    .toast.error   .toast-icon::before { content: '✕'; color: var(--danger); }
+    .toast.info    .toast-icon::before { content: 'ℹ'; color: var(--primary); }
+    .toast.warning .toast-icon::before { content: '⚠'; color: var(--warning); }
+    @keyframes slideIn { from { opacity:0; transform:translateX(20px); } to { opacity:1; transform:translateX(0); } }
+
+    /* ── Loading spinner ── */
+    .spinner {
+      width: 18px; height: 18px; border: 2px solid var(--border);
+      border-top-color: var(--primary); border-radius: 50%;
+      animation: spin .7s linear infinite; display: inline-block;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .loading-row { display: flex; align-items: center; gap: 8px; color: var(--muted); padding: 20px; }
+
+    /* ── Activity feed ── */
+    #activity-feed {
+      position: fixed; bottom: 20px; left: 360px;
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 10px 14px; box-shadow: var(--shadow);
+      font-size: 12px; color: var(--muted); max-width: 280px;
+      opacity: 0; transition: opacity .4s; pointer-events: none;
+    }
+    #activity-feed.visible { opacity: 1; }
+    .activity-icon { margin-right: 4px; }
+
+    .no-data { text-align: center; padding: 40px 20px; color: var(--muted); }
+    .no-data p { margin-top: 8px; }
+
+    /* ── Focus areas pills ── */
+    .focus-pill {
+      display: inline-block; background: #f0fdf4; color: #166534;
+      border: 1px solid #bbf7d0; border-radius: 999px; padding: 2px 8px;
+      font-size: 11px; margin: 2px;
+    }
+
+    /* scrollbar */
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+  </style>
+</head>
+<body>
+
+<!-- ══════════ Navbar ══════════ -->
+<nav id="navbar">
+  <div class="nav-brand">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+    </svg>
+    Bug Report Management
+  </div>
+  <div class="nav-repo">
+    <input id="input-owner" value="pandas-dev" placeholder="owner" style="width:110px" />
+    <span class="nav-sep">/</span>
+    <input id="input-repo" value="pandas" placeholder="repo" style="width:110px" />
+    <button class="nav-load-btn" id="btn-load">Load Repository</button>
+  </div>
+  <div class="nav-right">
+    <div class="sse-dot" id="sse-dot"></div>
+    <span class="sse-label" id="sse-label">Connecting…</span>
+  </div>
+</nav>
+
+<!-- ══════════ Main ══════════ -->
+<div id="app">
+
+  <!-- Left: Issue list -->
+  <div id="panel-left">
+    <div class="panel-header">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+        <div class="panel-title" style="margin-bottom:0">Issues</div>
+        <span id="issue-count" style="font-size:11px;color:var(--muted)"></span>
+      </div>
+      <div class="panel-controls">
+        <select id="filter-state">
+          <option value="open">Open</option>
+          <option value="closed">Closed</option>
+          <option value="all">All</option>
+        </select>
+        <input id="filter-search" placeholder="Search…" />
+        <button class="btn-sm btn-primary" id="btn-fetch-issues">Fetch</button>
+        <button class="btn-sm btn-secondary" id="btn-sync-repo">Sync</button>
+      </div>
+    </div>
+    <div id="issue-list">
+      <div class="no-data">
+        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity=".4">
+          <circle cx="12" cy="12" r="10"/><path d="M12 8v4m0 4h.01"/>
+        </svg>
+        <p>Click "Load Repository" to start</p>
+      </div>
+    </div>
+    <div id="pagination" style="display:none"></div>
+  </div>
+
+  <!-- Right: Issue detail -->
+  <div id="panel-right">
+    <div id="empty-state">
+      <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
+        <rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/>
+      </svg>
+      <p>Select an issue to view details</p>
+    </div>
+
+    <div id="issue-detail" style="display:none">
+      <div class="detail-header">
+        <div class="detail-num">Issue #<span id="d-number"></span></div>
+        <div class="detail-title" id="d-title"></div>
+        <div class="detail-meta">
+          <span id="d-state-badge"></span>
+          <span id="d-labels"></span>
+          <span style="font-size:12px;color:var(--muted)">by <strong id="d-author"></strong></span>
+          <a id="d-link" href="#" target="_blank" rel="noopener"
+             style="font-size:12px;color:var(--primary);text-decoration:none;margin-left:4px">
+            View on GitHub ↗
+          </a>
+        </div>
+      </div>
+
+      <div class="tabs">
+        <button class="tab active" data-tab="details">Details</button>
+        <button class="tab" data-tab="assignment">
+          Assignment <span id="tab-assignment-badge"></span>
+        </button>
+        <button class="tab" data-tab="duplicates">Duplicates</button>
+      </div>
+
+      <!-- Tab: Details -->
+      <div id="tab-details" class="tab-content active">
+        <pre id="d-body"></pre>
+      </div>
+
+      <!-- Tab: Assignment -->
+      <div id="tab-assignment" class="tab-content">
+        <div id="assignment-area"></div>
+      </div>
+
+      <!-- Tab: Duplicates -->
+      <div id="tab-duplicates" class="tab-content">
+        <div class="coming-soon-card">
+          <span class="badge badge-coming">Coming Soon</span>
+          <h3>Duplicate Detection</h3>
+          <p>
+            This panel will display semantically similar historical issues with
+            confidence scores, helping maintainers identify and link duplicate
+            bug reports before triaging.
+          </p>
+          <div class="placeholder-list">
+            <div class="placeholder-item"></div>
+            <div class="placeholder-item" style="opacity:.7"></div>
+            <div class="placeholder-item" style="opacity:.45"></div>
+          </div>
+          <div class="placeholder-confidence">
+            <span>Similarity score preview</span>
+            <div class="conf-bar-wrap"><div class="conf-bar"></div></div>
+            <span>~60%</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════ Override modal ══════════ -->
+<div id="override-modal" style="display:none">
+  <div class="modal-backdrop" id="modal-backdrop"></div>
+  <div class="modal-box">
+    <div class="modal-header">
+      <h3>Override Assignment</h3>
+      <button class="modal-close" id="modal-close-btn">×</button>
+    </div>
+    <div class="modal-body">
+      <input class="modal-search" id="contrib-search" placeholder="Search contributors by login…" />
+      <div id="contrib-list"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-sm btn-secondary" id="btn-cancel-modal">Cancel</button>
+      <button class="btn-sm btn-warning" id="btn-confirm-override" disabled>Confirm Override</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════ Activity feed ══════════ -->
+<div id="activity-feed"></div>
+
+<!-- ══════════ Toasts ══════════ -->
+<div id="toast-container"></div>
+
+<script>
+/* ─────────────────────────── State ─────────────────────────── */
+const S = {
+  owner: 'pandas-dev',
+  repo:  'pandas',
+  issues: [],       // current page only
+  totalIssues: 0,   // total matching count from server
+  selectedIssue: null,
+  assignment: null,
+  contributors: [],
+  overrideTarget: null,
+  page: 0,
+  pageSize: 20,
+};
+
+/* ─────────────────────────── Helpers ─────────────────────────── */
+const $ = id => document.getElementById(id);
+const apiBase = () => `/repositories/${S.owner}/${S.repo}`;
+
+async function api(method, path, body) {
+  const opts = { method, headers: {} };
+  if (body) { opts.body = JSON.stringify(body); opts.headers['Content-Type'] = 'application/json'; }
+  const r = await fetch(path, opts);
+  if (!r.ok) {
+    const txt = await r.text().catch(() => '');
+    throw new Error(`${r.status}: ${txt}`);
+  }
+  return r.json();
+}
+
+function avatarInitial(login) {
+  return (login || '?').charAt(0).toUpperCase();
+}
+
+function confidenceBadge(conf) {
+  const map = { high:'badge-high', medium:'badge-medium', low:'badge-low', manual:'badge-manual' };
+  return `<span class="badge ${map[conf] || 'badge-medium'}">${conf}</span>`;
+}
+
+function stateBadge(state) {
+  return `<span class="badge ${state === 'open' ? 'badge-open' : 'badge-closed'}">${state}</span>`;
+}
+
+/* ─────────────────────────── Toast ─────────────────────────── */
+function toast(msg, type = 'info') {
+  const el = document.createElement('div');
+  el.className = `toast ${type}`;
+  el.innerHTML = `<span class="toast-icon"></span>${msg}`;
+  $('toast-container').appendChild(el);
+  setTimeout(() => el.remove(), 4000);
+}
+
+/* ─────────────────────────── Activity feed ─────────────────────────── */
+function flashActivity(icon, text) {
+  const feed = $('activity-feed');
+  feed.innerHTML = `<span class="activity-icon">${icon}</span>${text}`;
+  feed.classList.add('visible');
+  clearTimeout(feed._t);
+  feed._t = setTimeout(() => feed.classList.remove('visible'), 4000);
+}
+
+/* ─────────────────────────── SSE ─────────────────────────── */
+let _es = null;
+function connectSSE() {
+  if (_es) _es.close();
+  _es = new EventSource('/stream');
+
+  _es.addEventListener('connected', () => {
+    $('sse-dot').className = 'sse-dot connected';
+    $('sse-label').textContent = 'Live';
+  });
+
+  _es.onerror = () => {
+    $('sse-dot').className = 'sse-dot';
+    $('sse-label').textContent = 'Reconnecting…';
+    setTimeout(connectSSE, 5000);
+  };
+
+  _es.addEventListener('repo_synced', e => {
+    const d = JSON.parse(e.data);
+    flashActivity('🔄', `Synced ${d.commits} commits, ${d.contributors} contributors`);
+    toast(`Repository synced: ${d.commits} commits`, 'success');
+  });
+
+  _es.addEventListener('issues_fetched', e => {
+    const d = JSON.parse(e.data);
+    flashActivity('📥', `Fetched ${d.count} issues`);
+    toast(`${d.count} issues fetched`, 'info');
+    loadIssues();
+  });
+
+  _es.addEventListener('assignment_generated', e => {
+    const d = JSON.parse(e.data);
+    flashActivity('🤖', `Assignment → ${d.assignee || '?'} (${d.confidence})`);
+    if (S.selectedIssue && S.selectedIssue.issue_number === d.issue_number) {
+      loadAssignment(d.issue_number);
+    }
+  });
+
+  _es.addEventListener('assignment_approved', e => {
+    const d = JSON.parse(e.data);
+    flashActivity('✅', `Assignment #${d.issue_number} approved`);
+    if (S.selectedIssue && S.selectedIssue.issue_number === d.issue_number) {
+      loadAssignment(d.issue_number);
+    }
+  });
+
+  _es.addEventListener('assignment_overridden', e => {
+    const d = JSON.parse(e.data);
+    flashActivity('↩', `Assignment #${d.issue_number} overridden → ${d.new_assignee || '?'}`);
+    if (S.selectedIssue && S.selectedIssue.issue_number === d.issue_number) {
+      loadAssignment(d.issue_number);
+    }
+  });
+}
+
+/* ─────────────────────────── Load issues ─────────────────────────── */
+function _filterParams(includePaging = true) {
+  const state  = $('filter-state').value;
+  const search = $('filter-search').value.trim();
+  const p = new URLSearchParams();
+  if (includePaging) {
+    p.set('limit',  S.pageSize);
+    p.set('offset', S.page * S.pageSize);
+  }
+  if (state  && state  !== 'all') p.set('state',  state);
+  if (search)                      p.set('search', search);
+  return p.toString();
+}
+
+async function loadIssues() {
+  $('issue-list').innerHTML = '<div class="loading-row"><div class="spinner"></div> Loading issues…</div>';
+  $('pagination').style.display = 'none';
+  $('issue-count').textContent = '';
+  try {
+    const [issues, countRes] = await Promise.all([
+      api('GET', `${apiBase()}/issues?${_filterParams(true)}`),
+      api('GET', `${apiBase()}/issues/count?${_filterParams(false)}`),
+    ]);
+    S.issues = issues;
+    S.totalIssues = countRes.count ?? issues.length;
+    renderIssueList();
+  } catch (err) {
+    $('issue-list').innerHTML = `<div class="no-data"><p style="color:var(--danger)">Failed to load issues.<br>${err.message}</p></div>`;
+  }
+}
+
+function renderIssueList() {
+  const total      = S.totalIssues;
+  const totalPages = Math.ceil(total / S.pageSize) || 1;
+  const start      = S.page * S.pageSize;
+
+  $('issue-count').textContent = total
+    ? `${start + 1}–${Math.min(start + S.pageSize, total)} of ${total}`
+    : '';
+
+  if (!S.issues.length) {
+    $('issue-list').innerHTML = '<div class="no-data"><p>No issues match your filters.</p></div>';
+    $('pagination').style.display = 'none';
+    return;
+  }
+
+  $('issue-list').innerHTML = S.issues.map(i => {
+    const active = S.selectedIssue && S.selectedIssue.issue_number === i.issue_number ? ' active' : '';
+    const labels = (i.labels || []).slice(0, 3).map(l =>
+      `<span class="badge badge-label">${escHtml(l)}</span>`).join('');
+    return `<div class="issue-card${active}" data-num="${i.issue_number}" onclick="selectIssue(${i.issue_number})">
+      <div class="ic-top">
+        <span class="ic-num">#${i.issue_number}</span>
+        <span class="ic-title">${escHtml(i.title)}</span>
+      </div>
+      <div class="ic-bottom">
+        ${stateBadge(i.state)}
+        ${labels}
+      </div>
+    </div>`;
+  }).join('');
+
+  renderPagination(totalPages);
+}
+
+function renderPagination(totalPages) {
+  const pg = $('pagination');
+  if (totalPages <= 1) { pg.style.display = 'none'; return; }
+  pg.style.display = 'flex';
+
+  const cur = S.page;
+  const pages = [];
+  for (let i = 0; i < totalPages; i++) {
+    if (i === 0 || i === totalPages - 1 || Math.abs(i - cur) <= 1) {
+      pages.push(i);
+    } else if (pages[pages.length - 1] !== '…') {
+      pages.push('…');
+    }
+  }
+
+  const btns = pages.map(p =>
+    p === '…'
+      ? `<span class="pg-ellipsis">…</span>`
+      : `<button class="pg-btn${p === cur ? ' active' : ''}" onclick="goToPage(${p})">${p + 1}</button>`
+  ).join('');
+
+  pg.innerHTML = `
+    <button class="pg-btn" onclick="goToPage(${cur - 1})" ${cur === 0 ? 'disabled' : ''}>‹</button>
+    <div class="pg-controls">${btns}</div>
+    <button class="pg-btn" onclick="goToPage(${cur + 1})" ${cur >= totalPages - 1 ? 'disabled' : ''}>›</button>`;
+}
+
+function goToPage(p) {
+  S.page = p;
+  loadIssues();
+  $('issue-list').scrollTop = 0;
+}
+
+/* ─────────────────────────── Select issue ─────────────────────────── */
+function selectIssue(num) {
+  const issue = S.issues.find(i => i.issue_number === num);
+  if (!issue) return;
+  S.selectedIssue = issue;
+  renderIssueList();
+
+  $('empty-state').style.display = 'none';
+  $('issue-detail').style.display = 'block';
+
+  $('d-number').textContent  = issue.issue_number;
+  $('d-title').textContent   = issue.title;
+  $('d-author').textContent  = issue.author_login || '—';
+  $('d-body').textContent    = issue.body || '';
+  $('d-link').href           = issue.html_url || '#';
+  $('d-state-badge').innerHTML = stateBadge(issue.state);
+  $('d-labels').innerHTML = (issue.labels || []).map(l =>
+    `<span class="badge badge-label">${escHtml(l)}</span>`).join('');
+
+  // Switch to details tab
+  switchTab('details');
+
+  // Preload assignment
+  loadAssignment(num);
+}
+
+/* ─────────────────────────── Tabs ─────────────────────────── */
+function switchTab(name) {
+  document.querySelectorAll('.tab').forEach(t => {
+    t.classList.toggle('active', t.dataset.tab === name);
+  });
+  document.querySelectorAll('.tab-content').forEach(c => {
+    c.classList.toggle('active', c.id === `tab-${name}`);
+  });
+}
+
+document.querySelectorAll('.tab').forEach(t => {
+  t.addEventListener('click', () => switchTab(t.dataset.tab));
+});
+
+/* ─────────────────────────── Assignment ─────────────────────────── */
+async function loadAssignment(num) {
+  S.assignment = null;
+  renderAssignment(null, true);
+  try {
+    const a = await api('GET', `${apiBase()}/assignments/${num}`);
+    S.assignment = a;
+    renderAssignment(a);
+  } catch (_) {
+    renderAssignment(null, false);
+  }
+}
+
+function renderAssignment(a, loading = false) {
+  const area = $('assignment-area');
+  const badge = $('tab-assignment-badge');
+
+  if (loading) {
+    area.innerHTML = '<div class="loading-row"><div class="spinner"></div> Loading assignment…</div>';
+    badge.innerHTML = '';
+    return;
+  }
+
+  if (!a) {
+    const isClosed = S.selectedIssue?.state === 'closed';
+    area.innerHTML = isClosed
+      ? `<div class="assignment-card" style="text-align:center;padding:32px">
+           <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"
+                style="color:var(--muted);opacity:.5;margin-bottom:10px">
+             <circle cx="12" cy="12" r="10"/><path d="M9 12l2 2 4-4"/>
+           </svg>
+           <p style="font-weight:600;color:var(--muted);margin-bottom:6px">Issue already closed</p>
+           <p style="font-size:12px;color:var(--muted)">This issue has been resolved and is no longer open.<br>Assignments are only generated for open issues.</p>
+         </div>`
+      : `<div class="assignment-card" style="text-align:center;padding:32px">
+           <p style="color:var(--muted);margin-bottom:16px">No assignment generated yet.</p>
+           <button class="btn-sm btn-primary" onclick="generateAssignment()">⟳ Generate Assignment</button>
+         </div>`;
+    badge.innerHTML = '';
+    return;
+  }
+
+  // Status badges
+  let statusHtml = '';
+  if (a.approved)   statusHtml += '<span class="badge badge-approved">✓ Approved</span>';
+  if (a.overridden) statusHtml += '<span class="badge badge-overridden">↩ Overridden</span>';
+  badge.innerHTML = a.approved ? ' ✓' : '';
+
+  // Filter out alternatives with null/empty contributor_key
+  const validAlternatives = (a.alternatives || []).filter(alt => 
+    alt.contributor_key && alt.contributor_key !== 'null' && alt.contributor_key !== 'undefined'
+  );
+  
+  const altsHtml = validAlternatives.map(alt => `
+    <div class="alt-card">
+      <div class="contrib-avatar" style="background:linear-gradient(135deg,#f59e0b,#ef4444)">
+        ${avatarInitial(alt.github_login || alt.contributor_key)}
+      </div>
+      <div style="flex:1">
+        <div class="alt-login">${escHtml(alt.github_login || alt.contributor_key || '—')}</div>
+        <div class="alt-reason">${escHtml(alt.reason || '')}</div>
+      </div>
+      <button class="alt-pick-btn" onclick="quickOverride('${escHtml(alt.contributor_key)}')">
+        Pick
+      </button>
+    </div>`).join('');
+
+  area.innerHTML = `
+    <div class="assignment-card">
+      <div class="assignment-header">
+        <div style="display:flex;align-items:center;gap:12px">
+          <div class="assignee-avatar">${avatarInitial(a.assigned_github_login)}</div>
+          <div class="assignee-info">
+            <div class="assignee-name">${escHtml(a.assigned_display_name || a.assigned_github_login || a.assigned_contributor_key || '—')}</div>
+            <div class="assignee-key">${a.assigned_github_login && a.assigned_github_login !== a.assigned_display_name
+              ? escHtml('@' + a.assigned_github_login)
+              : escHtml(a.assigned_contributor_key || '')}</div>
+          </div>
+        </div>
+        ${confidenceBadge(a.confidence)}
+      </div>
+
+      <div class="rationale-section">
+        <div class="rationale-label">Rationale</div>
+        <div class="rationale-text">${escHtml(a.rationale || '')}</div>
+      </div>
+
+      ${statusHtml ? `<div class="status-row">${statusHtml}</div>` : ''}
+
+      <div class="assignment-actions">
+        ${S.selectedIssue?.state !== 'closed' && !a.approved
+          ? `<button class="btn-sm btn-success" onclick="approveAssignment()">✓ Approve</button>` : ''}
+        ${S.selectedIssue?.state !== 'closed'
+          ? `<button class="btn-sm btn-warning" onclick="openOverrideModal()">↩ Override</button>
+             <button class="btn-sm btn-secondary" onclick="generateAssignment()">⟳ Regenerate</button>`
+          : `<span style="font-size:12px;color:var(--muted);font-style:italic">Issue is closed — assignment is read-only</span>`}
+        ${a.assigned_github_login
+          ? `<a href="https://github.com/${a.assigned_github_login}" target="_blank" rel="noopener"
+               class="btn-sm btn-secondary" style="text-decoration:none">GitHub ↗</a>`
+          : ''}
+      </div>
+    </div>
+
+    ${altsHtml ? `
+    <div>
+      <div class="alternatives-header">Alternative Suggestions</div>
+      ${altsHtml}
+    </div>` : ''}`;
+}
+
+async function generateAssignment() {
+  const num = S.selectedIssue?.issue_number;
+  if (!num) return;
+  renderAssignment(null, true);
+  try {
+    const a = await api('POST', `${apiBase()}/assignments/generate`,
+      { issue_number: num, issue_state: 'open' });
+    S.assignment = a;
+    renderAssignment(a);
+    toast('Assignment generated', 'success');
+  } catch (err) {
+    toast(`Failed to generate: ${err.message}`, 'error');
+    renderAssignment(null, false);
+  }
+}
+
+async function approveAssignment() {
+  const num = S.selectedIssue?.issue_number;
+  if (!num) return;
+  try {
+    const a = await api('POST', `${apiBase()}/assignments/${num}/approve`);
+    S.assignment = a;
+    renderAssignment(a);
+    toast('Assignment approved ✓', 'success');
+  } catch (err) {
+    toast(`Error: ${err.message}`, 'error');
+  }
+}
+
+async function quickOverride(contributorKey) {
+  const num = S.selectedIssue?.issue_number;
+  if (!num) return;
+  if (!contributorKey || contributorKey === 'null' || contributorKey === 'undefined') {
+    toast('Invalid contributor selected', 'error');
+    return;
+  }
+  try {
+    const a = await api('POST', `${apiBase()}/assignments/${num}/override`,
+      { contributor_key: contributorKey });
+    S.assignment = a;
+    renderAssignment(a);
+    toast('Assignment overridden', 'warning');
+  } catch (err) {
+    toast(`Override failed: ${err.message}`, 'error');
+  }
+}
+
+/* ─────────────────────────── Override modal ─────────────────────────── */
+async function openOverrideModal() {
+  S.overrideTarget = null;
+  $('btn-confirm-override').disabled = true;
+  $('contrib-search').value = '';
+  $('override-modal').style.display = 'block';
+  await loadContributorsForModal();
+}
+
+async function loadContributorsForModal() {
+  if (!S.contributors.length) {
+    try {
+      S.contributors = await api('GET', `${apiBase()}/contributors`);
+    } catch (_) { S.contributors = []; }
+  }
+  renderContributorList(S.contributors);
+}
+
+function renderContributorList(list) {
+  const filtered = list.filter(c => {
+    const q = $('contrib-search').value.toLowerCase();
+    const key = c.contributor_key;
+    // Filter out contributors with null/empty keys
+    if (!key || key === 'null' || key === 'undefined') {
+      return false;
+    }
+    return !q || (c.github_login || key || '').toLowerCase().includes(q);
+  });
+  $('contrib-list').innerHTML = filtered.map(c => `
+    <div class="contributor-row ${S.overrideTarget === c.contributor_key ? 'selected' : ''}"
+         onclick="selectContrib('${escHtml(c.contributor_key)}')">
+      <div class="contrib-avatar">${avatarInitial(c.github_login)}</div>
+      <div style="flex:1">
+        <div class="contrib-login">${escHtml(c.github_login || c.contributor_key)}</div>
+        <div class="contrib-commits">${c.commit_count} commits</div>
+        <div class="contrib-key">${escHtml(c.contributor_key)}</div>
+      </div>
+    </div>`).join('');
+}
+
+function selectContrib(key) {
+  if (!key || key === 'null' || key === 'undefined') {
+    return;
+  }
+  S.overrideTarget = key;
+  $('btn-confirm-override').disabled = false;
+  renderContributorList(S.contributors);
+}
+
+function closeModal() {
+  $('override-modal').style.display = 'none';
+  S.overrideTarget = null;
+}
+
+$('modal-backdrop').onclick = closeModal;
+$('modal-close-btn').onclick = closeModal;
+$('btn-cancel-modal').onclick = closeModal;
+
+$('contrib-search').oninput = () => renderContributorList(S.contributors);
+
+$('btn-confirm-override').onclick = async () => {
+  if (!S.overrideTarget) return;
+  closeModal();
+  await quickOverride(S.overrideTarget);
+};
+
+/* ─────────────────────────── Fetch / Sync ─────────────────────────── */
+$('btn-fetch-issues').onclick = async () => {
+  $('btn-fetch-issues').disabled = true;
+  $('btn-fetch-issues').textContent = '…';
+  try {
+    await api('POST', `${apiBase()}/issues/fetch-all`,
+      { state: $('filter-state').value, max_issues: 300 });
+    toast('Issues fetched from GitHub', 'success');
+    await loadIssues();
+  } catch (err) {
+    toast(`Fetch failed: ${err.message}`, 'error');
+  } finally {
+    $('btn-fetch-issues').disabled = false;
+    $('btn-fetch-issues').textContent = 'Fetch';
+  }
+};
+
+$('btn-sync-repo').onclick = async () => {
+  $('btn-sync-repo').disabled = true;
+  $('btn-sync-repo').textContent = '…';
+  toast('Syncing repository…', 'info');
+  try {
+    const r = await api('POST', `${apiBase()}/sync`,
+      { max_pages: 3, per_page: 100, recent_n_commits: 50 });
+    toast(`Synced ${r.commits_ingested} commits, ${r.contributors_profiled} contributors`, 'success');
+    S.contributors = [];
+  } catch (err) {
+    toast(`Sync failed: ${err.message}`, 'error');
+  } finally {
+    $('btn-sync-repo').disabled = false;
+    $('btn-sync-repo').textContent = 'Sync';
+  }
+};
+
+$('btn-load').onclick = () => {
+  S.owner = $('input-owner').value.trim() || S.owner;
+  S.repo  = $('input-repo').value.trim()  || S.repo;
+  S.issues = []; S.totalIssues = 0; S.selectedIssue = null; S.assignment = null; S.contributors = []; S.page = 0;
+  $('empty-state').style.display = 'flex';
+  $('issue-detail').style.display = 'none';
+  loadIssues();
+};
+
+let _searchTimer = null;
+$('filter-search').oninput  = () => {
+  clearTimeout(_searchTimer);
+  _searchTimer = setTimeout(() => { S.page = 0; loadIssues(); }, 350);
+};
+$('filter-state').onchange = () => { S.page = 0; loadIssues(); };
+
+/* ─────────────────────────── Escape HTML ─────────────────────────── */
+function escHtml(s) {
+  return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+/* ─────────────────────────── Boot ─────────────────────────── */
+connectSSE();
+loadIssues();
+</script>
+</body>
+</html>

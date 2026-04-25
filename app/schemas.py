@@ -114,12 +114,19 @@ class AssignmentRecord(BaseModel):
     issue_state: str = "open"
     assigned_contributor_key: str
     assigned_github_login: str | None = None
+    assigned_display_name: str | None = None
     rationale: str
     confidence: str
     alternatives: list[dict[str, Any]] = Field(default_factory=list)
     source_contributor_count: int = 0
     generated_with: str = ""
     generated_at: datetime | None = None
+    approved: bool = False
+    overridden: bool = False
+
+
+class OverrideRequest(BaseModel):
+    contributor_key: str
 
 
 class ApiMessage(BaseModel):

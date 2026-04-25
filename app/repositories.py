@@ -208,12 +208,38 @@ class IssueStore:
             {"_id": 0},
         )
 
-    def list_issues(self, repository_full_name: str, limit: int = 50) -> list[dict[str, Any]]:
+    def list_issues(
+        self,
+        repository_full_name: str,
+        limit: int = 20,
+        offset: int = 0,
+        state: str | None = None,
+        search: str | None = None,
+    ) -> list[dict[str, Any]]:
+        query: dict[str, Any] = {"repository_full_name": repository_full_name}
+        if state and state != "all":
+            query["state"] = state
+        if search:
+            query["title"] = {"$regex": search, "$options": "i"}
         return list(
-            self.collection.find({"repository_full_name": repository_full_name}, {"_id": 0})
+            self.collection.find(query, {"_id": 0})
             .sort("updated_at", DESCENDING)
+            .skip(offset)
             .limit(limit)
         )
+
+    def count_issues(
+        self,
+        repository_full_name: str,
+        state: str | None = None,
+        search: str | None = None,
+    ) -> int:
+        query: dict[str, Any] = {"repository_full_name": repository_full_name}
+        if state and state != "all":
+            query["state"] = state
+        if search:
+            query["title"] = {"$regex": search, "$options": "i"}
+        return self.collection.count_documents(query)
 
 
 class AssignmentStore:
@@ -242,3 +268,19 @@ class AssignmentStore:
             .sort("generated_at", DESCENDING)
             .limit(limit)
         )
+
+    def approve_assignment(self, repository_full_name: str, issue_number: int) -> dict[str, Any] | None:
+        self.collection.update_one(
+            {"repository_full_name": repository_full_name, "issue_number": issue_number},
+            {"$set": {"approved": True}},
+        )
+        return self.get_assignment(repository_full_name, issue_number)
+
+    def override_assignment(
+        self, repository_full_name: str, issue_number: int, updates: dict[str, Any]
+    ) -> dict[str, Any] | None:
+        self.collection.update_one(
+            {"repository_full_name": repository_full_name, "issue_number": issue_number},
+            {"$set": {**updates, "overridden": True, "approved": False}},
+        )
+        return self.get_assignment(repository_full_name, issue_number)

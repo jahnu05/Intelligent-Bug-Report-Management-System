@@ -1,11 +1,16 @@
 from __future__ import annotations
 
-from fastapi import Depends, FastAPI, HTTPException, Query
+import os
+
+from fastapi import Depends, FastAPI, HTTPException, Query, Request
+from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.staticfiles import StaticFiles
 
 from connect_atlas import get_mongo_database
 
 from .config import settings
 from .context_optimizer import CommitContextOptimizer
+from .events import stream_events
 from .gemini_api import ProviderFactory
 from .github_api import GitHubClient
 from .repositories import (
@@ -25,12 +30,15 @@ from .schemas import (
     CommitRecord,
     ContributorSummary,
     IssueRecord,
+    OverrideRequest,
     RandomIssueFetchRequest,
     RepositorySummary,
     SyncRequest,
     SyncRunResult,
 )
 from .services import ContributorPipelineService
+
+_STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
 
 
 app = FastAPI(
@@ -63,6 +71,9 @@ def build_pipeline() -> ContributorPipelineService:
     )
 
 
+app.mount("/static", StaticFiles(directory=_STATIC_DIR), name="static")
+
+
 @app.on_event("startup")
 def startup_event() -> None:
     app.state.pipeline = build_pipeline()
@@ -70,6 +81,26 @@ def startup_event() -> None:
 
 def get_pipeline() -> ContributorPipelineService:
     return app.state.pipeline
+
+
+@app.get("/", include_in_schema=False)
+def dashboard() -> FileResponse:
+    return FileResponse(os.path.join(_STATIC_DIR, "index.html"))
+
+
+@app.get("/stream", include_in_schema=False)
+async def sse_stream(request: Request, last_event_id: int = Query(default=0)) -> StreamingResponse:
+    async def generate():
+        async for chunk in stream_events(last_event_id):
+            if await request.is_disconnected():
+                break
+            yield chunk
+
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 @app.get("/health", response_model=ApiMessage)
@@ -203,10 +234,26 @@ def fetch_random_issue(
 def list_issues(
     owner: str,
     repo: str,
-    limit: int = Query(default=50, ge=1, le=200),
+    limit: int = Query(default=20, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+    state: str | None = Query(default=None),
+    search: str | None = Query(default=None),
     pipeline: ContributorPipelineService = Depends(get_pipeline),
 ) -> list[IssueRecord]:
-    return [IssueRecord(**item) for item in pipeline.list_issues(owner, repo, limit=limit)]
+    return [IssueRecord(**item) for item in pipeline.list_issues(
+        owner, repo, limit=limit, offset=offset, state=state, search=search
+    )]
+
+
+@app.get("/repositories/{owner}/{repo}/issues/count")
+def count_issues(
+    owner: str,
+    repo: str,
+    state: str | None = Query(default=None),
+    search: str | None = Query(default=None),
+    pipeline: ContributorPipelineService = Depends(get_pipeline),
+) -> dict:
+    return {"count": pipeline.count_issues(owner, repo, state=state, search=search)}
 
 
 @app.get("/repositories/{owner}/{repo}/issues/{issue_number}", response_model=IssueRecord)
@@ -278,6 +325,33 @@ def get_assignment(
     document = pipeline.get_assignment(owner, repo, issue_number)
     if not document:
         raise HTTPException(status_code=404, detail="Assignment not found.")
+    return AssignmentRecord(**document)
+
+
+@app.post("/repositories/{owner}/{repo}/assignments/{issue_number}/approve", response_model=AssignmentRecord)
+def approve_assignment(
+    owner: str,
+    repo: str,
+    issue_number: int,
+    pipeline: ContributorPipelineService = Depends(get_pipeline),
+) -> AssignmentRecord:
+    document = pipeline.approve_assignment(owner, repo, issue_number)
+    if not document:
+        raise HTTPException(status_code=404, detail="Assignment not found.")
+    return AssignmentRecord(**document)
+
+
+@app.post("/repositories/{owner}/{repo}/assignments/{issue_number}/override", response_model=AssignmentRecord)
+def override_assignment(
+    owner: str,
+    repo: str,
+    issue_number: int,
+    request: OverrideRequest,
+    pipeline: ContributorPipelineService = Depends(get_pipeline),
+) -> AssignmentRecord:
+    document = pipeline.override_assignment(owner, repo, issue_number, request.contributor_key)
+    if not document:
+        raise HTTPException(status_code=404, detail="Assignment or contributor not found.")
     return AssignmentRecord(**document)
 
 

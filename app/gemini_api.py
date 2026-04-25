@@ -63,24 +63,31 @@ class GeminiProviderStrategy(LLMProviderStrategy):
     def model_name(self) -> str:
         return self._model_name
 
-    def _ensure_model(self):
+    def _ensure_client(self):
         if not self.api_key:
             return None
         if self._model is None:
-            import google.generativeai as genai
+            from google import genai
 
-            genai.configure(api_key=self.api_key)
-            self._model = genai.GenerativeModel(self.model_name)
+            self._model = genai.Client(api_key=self.api_key)
         return self._model
 
+    def _generate(self, prompt: str) -> str:
+        client = self._ensure_client()
+        if client is None:
+            return ""
+        response = client.models.generate_content(
+            model=self.model_name,
+            contents=prompt,
+        )
+        return (response.text or "").strip()
+
     def summarize_contributor(self, payload: dict[str, Any]) -> SummaryPayload:
-        model = self._ensure_model()
-        if model is None:
+        if not self.api_key:
             return self._fallback_summary(payload)
 
         prompt = self._build_prompt(payload)
-        response = model.generate_content(prompt)
-        text = (getattr(response, "text", "") or "").strip()
+        text = self._generate(prompt)
         parsed = self._parse_json(text)
         if parsed is None:
             return self._fallback_summary(payload, raw_text=text)
@@ -96,13 +103,11 @@ class GeminiProviderStrategy(LLMProviderStrategy):
         )
 
     def assign_issue(self, payload: dict[str, Any]) -> AssignmentPayload:
-        model = self._ensure_model()
-        if model is None:
+        if not self.api_key:
             return self._fallback_assignment(payload)
 
         prompt = self._build_assignment_prompt(payload)
-        response = model.generate_content(prompt)
-        text = (getattr(response, "text", "") or "").strip()
+        text = self._generate(prompt)
         parsed = self._parse_json(text)
         if parsed is None:
             return self._fallback_assignment(payload)
