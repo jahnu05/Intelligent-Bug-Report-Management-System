@@ -306,6 +306,8 @@ class ContributorPipelineService:
             "source_contributor_count": len(contributors),
             "generated_with": f"{self.summarizer.provider_name}:{self.summarizer.model_name}",
             "generated_at": datetime.now(timezone.utc),
+            "approved": False,
+            "overridden": False,
         }
         self.assignment_store.upsert_assignment(assignment_document)
         emit(
