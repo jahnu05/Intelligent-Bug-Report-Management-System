@@ -3,6 +3,8 @@ from __future__ import annotations
 from collections import defaultdict
 from datetime import datetime, timezone
 from typing import Any
+import re
+from difflib import SequenceMatcher
 
 from .context_optimizer import CommitContextOptimizer
 from .events import emit
@@ -375,6 +377,92 @@ class ContributorPipelineService:
 
     def get_assignment(self, owner: str, repo: str, issue_number: int) -> dict[str, Any] | None:
         return self.assignment_store.get_assignment(f"{owner}/{repo}", issue_number)
+
+    def detect_duplicates(
+        self,
+        owner: str,
+        repo: str,
+        issue_number: int,
+        similarity_threshold: float = 0.7,
+        max_results: int = 10,
+    ) -> dict[str, Any]:
+        repository_full_name = f"{owner}/{repo}"
+        
+        # Get the target issue
+        target_issue = self.issue_store.get_issue(repository_full_name, issue_number)
+        if not target_issue:
+            raise ValueError(f"Issue #{issue_number} not found in database.")
+        
+        # Get all other issues from the same repository
+        all_issues = self.issue_store.list_issues(repository_full_name, limit=1000)  # Get more issues for comparison
+        
+        # Calculate similarity scores
+        duplicates = []
+        target_text = self._normalize_text(f"{target_issue.get('title', '')} {target_issue.get('body', '')}")
+        
+        for issue in all_issues:
+            # Skip the target issue itself
+            if issue.get('issue_number') == issue_number:
+                continue
+                
+            # Calculate similarity
+            issue_text = self._normalize_text(f"{issue.get('title', '')} {issue.get('body', '')}")
+            similarity = self._calculate_similarity(target_text, issue_text)
+            
+            # Only include issues above the threshold
+            if similarity >= similarity_threshold:
+                duplicates.append({
+                    "issue_number": issue.get('issue_number'),
+                    "title": issue.get('title', ''),
+                    "body": issue.get('body'),
+                    "state": issue.get('state', 'unknown'),
+                    "similarity_score": similarity,
+                    "html_url": issue.get('html_url'),
+                    "author_login": issue.get('author_login'),
+                    "created_at": issue.get('created_at'),
+                })
+        
+        # Sort by similarity score (highest first) and limit results
+        duplicates.sort(key=lambda x: x['similarity_score'], reverse=True)
+        duplicates = duplicates[:max_results]
+        
+        return {
+            "target_issue": issue_number,
+            "duplicates_found": len(duplicates),
+            "similarity_threshold": similarity_threshold,
+            "duplicates": duplicates,
+        }
+    
+    def _normalize_text(self, text: str) -> str:
+        """Normalize text for similarity comparison."""
+        if not text:
+            return ""
+        
+        # Convert to lowercase
+        text = text.lower()
+        
+        # Remove URLs
+        text = re.sub(r'http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\\(\\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+', '', text)
+        
+        # Remove code blocks
+        text = re.sub(r'```.*?```', '', text, flags=re.DOTALL)
+        text = re.sub(r'`.*?`', '', text)
+        
+        # Remove special characters but keep spaces
+        text = re.sub(r'[^\w\s]', ' ', text)
+        
+        # Remove extra whitespace
+        text = re.sub(r'\s+', ' ', text).strip()
+        
+        return text
+    
+    def _calculate_similarity(self, text1: str, text2: str) -> float:
+        """Calculate similarity between two text strings."""
+        if not text1 or not text2:
+            return 0.0
+        
+        # Use SequenceMatcher for similarity calculation
+        return SequenceMatcher(None, text1, text2).ratio()
 
     def _repository_document(self, payload: dict[str, Any]) -> dict[str, Any]:
         return {

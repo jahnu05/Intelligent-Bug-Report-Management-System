@@ -29,6 +29,8 @@ from .schemas import (
     BulkIssueFetchRequest,
     CommitRecord,
     ContributorSummary,
+    DuplicateDetectionRequest,
+    DuplicateDetectionResult,
     IssueRecord,
     OverrideRequest,
     RandomIssueFetchRequest,
@@ -326,6 +328,29 @@ def get_assignment(
     if not document:
         raise HTTPException(status_code=404, detail="Assignment not found.")
     return AssignmentRecord(**document)
+
+
+@app.post("/repositories/{owner}/{repo}/issues/{issue_number}/detect-duplicates", response_model=DuplicateDetectionResult)
+def detect_duplicates(
+    owner: str,
+    repo: str,
+    issue_number: int,
+    request: DuplicateDetectionRequest,
+    pipeline: ContributorPipelineService = Depends(get_pipeline),
+) -> DuplicateDetectionResult:
+    try:
+        result = pipeline.detect_duplicates(
+            owner,
+            repo,
+            issue_number=issue_number,
+            similarity_threshold=request.similarity_threshold,
+            max_results=request.max_results,
+        )
+        return DuplicateDetectionResult(**result)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
 @app.post("/repositories/{owner}/{repo}/assignments/{issue_number}/approve", response_model=AssignmentRecord)

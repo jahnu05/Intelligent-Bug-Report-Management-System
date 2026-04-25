@@ -91,6 +91,8 @@
     .btn-success:hover { background: #059669; }
     .btn-warning { background: var(--warning); color: white; }
     .btn-warning:hover { background: #d97706; }
+    .btn-info { background: #06b6d4; color: white; }
+    .btn-info:hover { background: #0891b2; }
     .btn-danger  { background: var(--danger);  color: white; }
     .btn-danger:hover  { background: #dc2626; }
 
@@ -542,24 +544,12 @@
 
       <!-- Tab: Duplicates -->
       <div id="tab-duplicates" class="tab-content">
-        <div class="coming-soon-card">
-          <span class="badge badge-coming">Coming Soon</span>
-          <h3>Duplicate Detection</h3>
-          <p>
-            This panel will display semantically similar historical issues with
-            confidence scores, helping maintainers identify and link duplicate
-            bug reports before triaging.
-          </p>
-          <div class="placeholder-list">
-            <div class="placeholder-item"></div>
-            <div class="placeholder-item" style="opacity:.7"></div>
-            <div class="placeholder-item" style="opacity:.45"></div>
+        <div id="duplicates-content">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+            <h3 style="margin:0;color:var(--txt);">🔍 Duplicate Detection</h3>
+            <button class="btn-sm btn-primary" onclick="loadDuplicates()">Detect Duplicates</button>
           </div>
-          <div class="placeholder-confidence">
-            <span>Similarity score preview</span>
-            <div class="conf-bar-wrap"><div class="conf-bar"></div></div>
-            <span>~60%</span>
-          </div>
+          <div id="duplicates-results"></div>
         </div>
       </div>
     </div>
@@ -842,11 +832,107 @@ function switchTab(name) {
   document.querySelectorAll('.tab-content').forEach(c => {
     c.classList.toggle('active', c.id === `tab-${name}`);
   });
+  
+  // Auto-load duplicates when switching to duplicates tab
+  if (name === 'duplicates' && S.selectedIssue) {
+    loadDuplicates();
+  }
 }
 
 document.querySelectorAll('.tab').forEach(t => {
   t.addEventListener('click', () => switchTab(t.dataset.tab));
 });
+
+/* ─────────────────────────── Duplicates ─────────────────────────── */
+async function loadDuplicates() {
+  const num = S.selectedIssue?.issue_number;
+  if (!num) {
+    renderDuplicates(null, 'Please select an issue first');
+    return;
+  }
+  
+  renderDuplicates(null, 'loading');
+  
+  try {
+    const result = await api('POST', `${apiBase()}/issues/${num}/detect-duplicates`, {
+      similarity_threshold: 0.7,
+      max_results: 10
+    });
+    
+    renderDuplicates(result);
+  } catch (err) {
+    console.error('Duplicate detection error:', err);
+    renderDuplicates(null, `Error: ${err.message}`);
+  }
+}
+
+function renderDuplicates(result, status = null) {
+  const container = $('duplicates-results');
+  
+  if (status === 'loading') {
+    container.innerHTML = '<div class="loading-row"><div class="spinner"></div> Detecting duplicates…</div>';
+    return;
+  }
+  
+  if (status === 'error' || status === 'Please select an issue first') {
+    container.innerHTML = `
+      <div class="assignment-card" style="text-align:center;padding:32px">
+        <p style="color:var(--muted);margin-bottom:16px">${status}</p>
+      </div>
+    `;
+    return;
+  }
+  
+  if (!result || result.duplicates_found === 0) {
+    container.innerHTML = `
+      <div class="assignment-card" style="text-align:center;padding:32px">
+        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"
+             style="color:var(--muted);opacity:.5;margin-bottom:10px">
+          <circle cx="12" cy="12" r="10"/><path d="M9 12l2 2 4-4"/>
+        </svg>
+        <p style="font-weight:600;color:var(--muted);margin-bottom:6px">No duplicates found</p>
+        <p style="font-size:12px;color:var(--muted)">No similar issues detected with ${(result?.similarity_threshold * 100 || 70).toFixed(0)}% similarity threshold.</p>
+      </div>
+    `;
+    return;
+  }
+  
+  const duplicatesHtml = result.duplicates.map(dup => `
+    <div class="duplicate-item" style="
+      border: 1px solid var(--border); border-radius: var(--radius);
+      padding: 16px; margin-bottom: 12px; background: var(--surface);
+      transition: all .15s; cursor: pointer;
+    " onclick="window.open('${dup.html_url}', '_blank')"
+       onmouseover="this.style.background='#f8fafc'; this.style.borderColor='var(--primary)'"
+       onmouseout="this.style.background='var(--surface)'; this.style.borderColor='var(--border)'">
+      <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 8px;">
+        <div>
+          <strong>#${dup.issue_number}</strong>
+          <span class="badge" style="background: ${dup.state === 'open' ? 'var(--success)' : 'var(--muted)'}; margin-left: 8px;">
+            ${dup.state}
+          </span>
+        </div>
+        <div style="font-size: 12px; color: var(--muted);">
+          ${(dup.similarity_score * 100).toFixed(1)}% similar
+        </div>
+      </div>
+      <div style="font-weight: 500; margin-bottom: 4px;">${dup.title}</div>
+      ${dup.body ? `<div style="font-size: 12px; color: var(--txt2); margin-bottom: 8px;">${dup.body.substring(0, 200)}${dup.body.length > 200 ? '...' : ''}</div>` : ''}
+      <div style="display: flex; justify-content: space-between; align-items: center; font-size: 12px; color: var(--muted);">
+        <span>By ${dup.author_login || 'unknown'}</span>
+        <span>Click to view on GitHub →</span>
+      </div>
+    </div>
+  `).join('');
+  
+  container.innerHTML = `
+    <div style="margin-bottom: 16px; color: var(--txt2); font-size: 13px;">
+      Found <strong>${result.duplicates_found}</strong> potential duplicates for issue #${result.target_issue}
+      with ${(result.similarity_threshold * 100).toFixed(0)}% similarity threshold.
+    </div>
+    ${duplicatesHtml}
+  `;
+}
 
 /* ─────────────────────────── Assignment ─────────────────────────── */
 async function loadAssignment(num) {
@@ -1004,6 +1090,7 @@ async function quickOverride(contributorKey) {
     toast(`Override failed: ${err.message}`, 'error');
   }
 }
+
 
 /* ─────────────────────────── Override modal ─────────────────────────── */
 async function openOverrideModal() {

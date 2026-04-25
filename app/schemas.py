@@ -129,6 +129,29 @@ class OverrideRequest(BaseModel):
     contributor_key: str
 
 
+class DuplicateDetectionRequest(BaseModel):
+    similarity_threshold: float = Field(default=0.8, ge=0.1, le=1.0)
+    max_results: int = Field(default=10, ge=1, le=50)
+
+
+class DuplicateIssue(BaseModel):
+    issue_number: int
+    title: str
+    body: str | None = None
+    state: str
+    similarity_score: float
+    html_url: str | None = None
+    author_login: str | None = None
+    created_at: datetime | None = None
+
+
+class DuplicateDetectionResult(BaseModel):
+    target_issue: int
+    duplicates_found: int
+    similarity_threshold: float
+    duplicates: list[DuplicateIssue]
+
+
 class ApiMessage(BaseModel):
     message: str
     data: Any | None = None
