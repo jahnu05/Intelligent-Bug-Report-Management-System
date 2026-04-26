@@ -207,6 +207,55 @@ class ContributorPipelineService:
             "message": f"Successfully fetched and stored {stored_count} issues from {repository_full_name} (limited to {max_issues}).",
         }
 
+    def process_webhook_payload(self, payload: dict[str, Any], event_type: str) -> dict[str, Any]:
+        """Process incoming GitHub webhook payload."""
+        if event_type != "issues":
+            return {"status": "ignored", "reason": f"Event type '{event_type}' not handled"}
+
+        action = payload.get("action")
+        issue_data = payload.get("issue")
+        repo_data = payload.get("repository")
+
+        if not issue_data or not repo_data:
+            return {"status": "error", "reason": "Missing issue or repository data in payload"}
+
+        repository_full_name = repo_data.get("full_name")
+        issue_number = issue_data.get("number")
+
+        # Map labels
+        labels = [label.get("name") for label in issue_data.get("labels", []) if label.get("name")]
+
+        # Create document
+        document = {
+            "repository_full_name": repository_full_name,
+            "issue_number": issue_number,
+            "title": issue_data.get("title", ""),
+            "body": issue_data.get("body"),
+            "state": issue_data.get("state", "open"),
+            "labels": labels,
+            "html_url": issue_data.get("html_url"),
+            "author_login": (issue_data.get("user") or {}).get("login"),
+            "created_at": self.github_client._parse_datetime(issue_data.get("created_at")),
+            "updated_at": self.github_client._parse_datetime(issue_data.get("updated_at")),
+            "fetched_at": datetime.now(timezone.utc),
+        }
+
+        self.issue_store.upsert_issue(document)
+        
+        emit("issue_updated", {
+            "repo": repository_full_name,
+            "issue_number": issue_number,
+            "action": action,
+            "state": document["state"]
+        })
+
+        return {
+            "status": "success",
+            "action": action,
+            "issue_number": issue_number,
+            "repository": repository_full_name
+        }
+
     def fetch_random_issue(
         self,
         owner: str,

@@ -584,8 +584,8 @@
 <script>
 /* ─────────────────────────── State ─────────────────────────── */
 const S = {
-  owner: 'pandas-dev',
-  repo:  'pandas',
+  owner: localStorage.getItem('bug_repo_owner') || 'pandas-dev',
+  repo:  localStorage.getItem('bug_repo_repo') || 'pandas',
   issues: [],
   totalIssues: 0,
   selectedIssue: null,
@@ -696,6 +696,21 @@ function connectSSE() {
     flashActivity('↩', `Assignment #${d.issue_number} overridden → ${d.new_assignee || '?'}`);
     if (S.selectedIssue && S.selectedIssue.issue_number === d.issue_number) {
       loadAssignment(d.issue_number);
+    }
+  });
+
+  _es.addEventListener('issue_updated', e => {
+    const d = JSON.parse(e.data);
+    if (d.repo !== `${S.owner}/${S.repo}`) return;
+    
+    flashActivity('🔔', `Issue #${d.issue_number} ${d.action}`);
+    
+    // Refresh the list
+    loadIssues();
+    
+    // If the selected issue was updated, refresh details
+    if (S.selectedIssue && S.selectedIssue.issue_number === d.issue_number) {
+      selectIssue(d.issue_number);
     }
   });
 }
@@ -1164,11 +1179,14 @@ $('btn-fetch-issues').onclick = async () => {
   $('btn-fetch-issues').disabled = true;
   $('btn-fetch-issues').textContent = '…';
   try {
+    // First trigger the actual fetch from GitHub
+    await api('POST', `${apiBase()}/issues/fetch-all`, { state: 'open', max_issues: 200 });
+    
     S.page = 0;
     await loadIssues();
-    toast('Issues loaded from database', 'success');
+    toast('Issues fetched from GitHub and stored', 'success');
   } catch (err) {
-    toast(`Failed to load issues: ${err.message}`, 'error');
+    toast(`Failed to fetch issues: ${err.message}`, 'error');
   } finally {
     $('btn-fetch-issues').disabled = false;
     $('btn-fetch-issues').textContent = 'Fetch';
@@ -1179,11 +1197,14 @@ $('btn-sync-repo').onclick = async () => {
   $('btn-sync-repo').disabled = true;
   $('btn-sync-repo').textContent = '…';
   try {
+    // First trigger the actual sync from GitHub (commits -> contributor profiles)
+    await api('POST', `${apiBase()}/sync`, { max_pages: 5, per_page: 100 });
+    
     S.contributors = []; S.allAssignments = [];
     await loadContributorPanel();
-    toast('Contributors loaded from database', 'success');
+    toast('Repository synced with GitHub', 'success');
   } catch (err) {
-    toast(`Failed to load contributors: ${err.message}`, 'error');
+    toast(`Sync failed: ${err.message}`, 'error');
   } finally {
     $('btn-sync-repo').disabled = false;
     $('btn-sync-repo').textContent = 'Sync';
@@ -1193,6 +1214,10 @@ $('btn-sync-repo').onclick = async () => {
 $('btn-load').onclick = () => {
   S.owner = $('input-owner').value.trim() || S.owner;
   S.repo  = $('input-repo').value.trim()  || S.repo;
+  
+  localStorage.setItem('bug_repo_owner', S.owner);
+  localStorage.setItem('bug_repo_repo', S.repo);
+
   S.issues = []; S.totalIssues = 0; S.selectedIssue = null; S.assignment = null;
   S.contributors = []; S.allAssignments = []; S.selectedContributor = null; S.page = 0;
   $('empty-state').style.display = 'flex';
@@ -1452,6 +1477,9 @@ function escHtml(s) {
 }
 
 /* ─────────────────────────── Boot ─────────────────────────── */
+$('input-owner').value = S.owner;
+$('input-repo').value = S.repo;
+
 connectSSE();
 loadIssues();
 </script>

@@ -18,6 +18,8 @@ The issue-assignment flow follows the same layered architecture used in contribu
 - Service layer: issue fetch and assignment orchestration in [app/services.py](app/services.py)
 - Adapter layer: GitHub issues integration in [app/github_api.py](app/github_api.py), LLM assignment prompts in [app/gemini_api.py](app/gemini_api.py)
 - Persistence layer: issue and assignment stores in [app/repositories.py](app/repositories.py)
+- Webhook layer: real-time issue synchronization via GitHub Webhooks
+- Event layer: instant UI updates via Server-Sent Events (SSE)
 
 ## 3. Workflow
 
@@ -27,6 +29,14 @@ The issue-assignment flow follows the same layered architecture used in contribu
 2. Service asks GitHub client for a random issue from selected pages
 3. Pull requests are excluded
 4. Issue is upserted into `issues` collection
+
+### 3.3 Webhook-based synchronization
+
+1. GitHub sends a POST request to `/webhooks/github` (via ngrok in local development).
+2. Service validates the signature (if configured).
+3. Service parses the payload for `opened`, `edited`, or `closed` actions.
+4. Issue is upserted into MongoDB.
+5. `issue_updated` event is broadcasted via SSE to notify the local dashboard.
 
 ### 3.2 Assignment generation
 

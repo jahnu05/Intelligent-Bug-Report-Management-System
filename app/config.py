@@ -22,6 +22,7 @@ class Settings:
     llm_recent_messages_limit: int = int(os.getenv("LLM_RECENT_MESSAGES_LIMIT", "25"))
     default_sync_pages: int = int(os.getenv("DEFAULT_SYNC_PAGES", "5"))
     default_page_size: int = int(os.getenv("DEFAULT_PAGE_SIZE", "100"))
+    github_webhook_secret: str | None = os.getenv("GITHUB_WEBHOOK_SECRET")
 
 
 settings = Settings()

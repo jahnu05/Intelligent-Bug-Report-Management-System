@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import hashlib
+import hmac
 import os
 
-from fastapi import Depends, FastAPI, HTTPException, Query, Request
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -378,6 +380,40 @@ def override_assignment(
     if not document:
         raise HTTPException(status_code=404, detail="Assignment or contributor not found.")
     return AssignmentRecord(**document)
+
+
+@app.post("/webhooks/github")
+async def github_webhook(
+    request: Request,
+    x_github_event: str = Header(...),
+    x_hub_signature_256: str | None = Header(None),
+    pipeline: ContributorPipelineService = Depends(get_pipeline),
+):
+    """Entry point for GitHub webhooks."""
+    body = await request.body()
+
+    # Verify signature if secret is configured
+    if settings.github_webhook_secret:
+        if not x_hub_signature_256:
+            raise HTTPException(status_code=401, detail="X-Hub-Signature-256 missing")
+
+        signature = hmac.new(
+            settings.github_webhook_secret.encode(),
+            msg=body,
+            digestmod=hashlib.sha256
+        ).hexdigest()
+
+        expected_signature = f"sha256={signature}"
+        if not hmac.compare_digest(expected_signature, x_hub_signature_256):
+            raise HTTPException(status_code=401, detail="Invalid signature")
+
+    try:
+        payload = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON payload")
+
+    result = pipeline.process_webhook_payload(payload, x_github_event)
+    return result
 
 
 if __name__ == "__main__":

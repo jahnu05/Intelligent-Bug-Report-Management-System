@@ -21,6 +21,8 @@ The implementation follows a layered architecture:
 - Adapter layer: external API integrations in [app/github_api.py](app/github_api.py) and [app/gemini_api.py](app/gemini_api.py)
 - Context optimization layer: bounded prompt payload builder in [app/context_optimizer.py](app/context_optimizer.py)
 - Persistence layer: MongoDB repository abstractions in [app/repositories.py](app/repositories.py)
+- Event layer: SSE event bus and broadcasting in [app/events.py](app/events.py)
+- Webhook layer: GitHub event ingestion in [app/main.py](app/main.py)
 - Infrastructure helper: Atlas connection helper in [connect_atlas.py](connect_atlas.py)
 
 This separation supports testability, low coupling, and replaceability of external systems.
@@ -437,6 +439,24 @@ What it does:
 - clears summary fields for contributors across all repositories
 - keeps commit history and repository metadata intact
 
+### 8.11 GitHub Webhook
+
+POST `/webhooks/github`
+
+What it does:
+- Receives `issues` events from GitHub.
+- Processes `opened`, `edited`, and `closed` actions.
+- Automatically persists the new state to the MongoDB `issues` collection.
+- Broadcasts an `issue_updated` event to all connected dashboard users via SSE.
+
+### 8.12 SSE Stream
+
+GET `/stream`
+
+What it does:
+- Provides a Server-Sent Events (SSE) stream for real-time dashboard updates.
+- Emits events for: `repo_synced`, `issues_fetched`, `assignment_generated`, and `issue_updated`.
+
 ## 9. Error handling strategy
 
 - GitHub API failures raise explicit `GitHubAPIError` exceptions.
@@ -455,7 +475,6 @@ What it does:
 ### What was intentionally not included yet
 
 - Background task queueing
-- Webhook-based incremental sync
 - User authentication and access control
 - Diff-level semantic analysis
 
