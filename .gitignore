@@ -1,5 +1,6 @@
 # Environment variables
 .env
+.env.example
 
 # Virtual environments
 .venv/
@@ -60,3 +61,6 @@ dmypy.json
 .Trashes
 ehthumbs.db
 Thumbs.db
+
+# Task-3 doc
+task_3_architecture.md

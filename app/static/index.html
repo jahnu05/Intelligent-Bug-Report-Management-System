@@ -1164,12 +1164,11 @@ $('btn-fetch-issues').onclick = async () => {
   $('btn-fetch-issues').disabled = true;
   $('btn-fetch-issues').textContent = '…';
   try {
-    await api('POST', `${apiBase()}/issues/fetch-all`,
-      { state: $('filter-state').value, max_issues: 300 });
-    toast('Issues fetched from GitHub', 'success');
+    S.page = 0;
     await loadIssues();
+    toast('Issues loaded from database', 'success');
   } catch (err) {
-    toast(`Fetch failed: ${err.message}`, 'error');
+    toast(`Failed to load issues: ${err.message}`, 'error');
   } finally {
     $('btn-fetch-issues').disabled = false;
     $('btn-fetch-issues').textContent = 'Fetch';
@@ -1179,14 +1178,12 @@ $('btn-fetch-issues').onclick = async () => {
 $('btn-sync-repo').onclick = async () => {
   $('btn-sync-repo').disabled = true;
   $('btn-sync-repo').textContent = '…';
-  toast('Syncing repository…', 'info');
   try {
-    const r = await api('POST', `${apiBase()}/sync`,
-      { max_pages: 3, per_page: 100, recent_n_commits: 50 });
-    toast(`Synced ${r.commits_ingested} commits, ${r.contributors_profiled} contributors`, 'success');
-    S.contributors = [];
+    S.contributors = []; S.allAssignments = [];
+    await loadContributorPanel();
+    toast('Contributors loaded from database', 'success');
   } catch (err) {
-    toast(`Sync failed: ${err.message}`, 'error');
+    toast(`Failed to load contributors: ${err.message}`, 'error');
   } finally {
     $('btn-sync-repo').disabled = false;
     $('btn-sync-repo').textContent = 'Sync';
