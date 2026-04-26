@@ -1,0 +1,106 @@
+{
+  "analysis_timestamp": "2026-04-26T20:28:05.965656",
+  "system_info": {
+    "platform": "Linux-6.8.0-87-generic-x86_64-with-glibc2.39",
+    "python_version": "3.12.3",
+    "cpu_count": 8,
+    "memory_total_gb": 30.741397857666016
+  },
+  "response_time_analysis": [
+    {
+      "endpoint": "/health",
+      "method": "GET",
+      "iterations": 10,
+      "errors": 0,
+      "avg_response_time_ms": 4.685783386230469,
+      "min_response_time_ms": 4.227399826049805,
+      "max_response_time_ms": 5.404233932495117,
+      "median_response_time_ms": 4.65703010559082,
+      "p95_response_time_ms": 5.404233932495117,
+      "p99_response_time_ms": 5.404233932495117,
+      "success_rate": 100.0
+    },
+    {
+      "endpoint": "/repositories/pandas-dev/pandas/issues?limit=20",
+      "method": "GET",
+      "iterations": 10,
+      "errors": 0,
+      "avg_response_time_ms": 81.52821063995361,
+      "min_response_time_ms": 76.3392448425293,
+      "max_response_time_ms": 107.67984390258789,
+      "median_response_time_ms": 79.31125164031982,
+      "p95_response_time_ms": 107.67984390258789,
+      "p99_response_time_ms": 107.67984390258789,
+      "success_rate": 100.0
+    },
+    {
+      "endpoint": "/repositories/pandas-dev/pandas/assignments?limit=20",
+      "method": "GET",
+      "iterations": 10,
+      "errors": 0,
+      "avg_response_time_ms": 38.52829933166504,
+      "min_response_time_ms": 37.91522979736328,
+      "max_response_time_ms": 40.42339324951172,
+      "median_response_time_ms": 38.45393657684326,
+      "p95_response_time_ms": 40.42339324951172,
+      "p99_response_time_ms": 40.42339324951172,
+      "success_rate": 100.0
+    }
+  ],
+  "throughput_analysis": [
+    {
+      "endpoint": "/health",
+      "method": "GET",
+      "duration_seconds": 15.069233655929565,
+      "total_requests": 2910,
+      "successful_requests": 2910,
+      "failed_requests": 0,
+      "throughput_rps": 193.1086919509639,
+      "success_rate": 100.0
+    },
+    {
+      "endpoint": "/repositories/pandas-dev/pandas/issues?limit=20",
+      "method": "GET",
+      "duration_seconds": 15.101692914962769,
+      "total_requests": 180,
+      "successful_requests": 180,
+      "failed_requests": 0,
+      "throughput_rps": 11.919193497945907,
+      "success_rate": 100.0
+    }
+  ],
+  "system_resources": {
+    "cpu_percent": 6.8,
+    "memory_total_gb": 30.741397857666016,
+    "memory_available_gb": 22.511581420898438,
+    "memory_used_gb": 8.229816436767578,
+    "memory_percent": 26.8,
+    "disk_total_gb": 143.1266326904297,
+    "disk_used_gb": 133.78134155273438,
+    "disk_free_gb": 2.0054473876953125,
+    "network_bytes_sent": 351153129,
+    "network_bytes_recv": 683680549
+  },
+  "database_performance": {
+    "database_connected": true,
+    "issues_query_time_ms": 180.4637908935547,
+    "assignments_query_time_ms": 33.67352485656738,
+    "database_size_mb": 1.0090837478637695,
+    "collections_count": 6,
+    "issues_count": 100,
+    "assignments_count": 3
+  },
+  "complex_operation_analysis": {
+    "endpoint": "/repositories/pandas-dev/pandas/issues/65320/detect-duplicates",
+    "method": "POST",
+    "iterations": 5,
+    "errors": 0,
+    "avg_response_time_ms": 5527.099609375,
+    "min_response_time_ms": 5280.401706695557,
+    "max_response_time_ms": 5731.051206588745,
+    "median_response_time_ms": 5490.555763244629,
+    "p95_response_time_ms": 5731.051206588745,
+    "p99_response_time_ms": 5731.051206588745,
+    "success_rate": 100.0
+  }
+}
